@@ -1,1 +1,345 @@
+#include <iostream>
+#include <string>
+#include <limits>
+using namespace std;
 
+
+class Bill {
+public:
+    int id;
+    string title;
+    string description;
+    string proposer;
+    string status;
+    int priority;
+    Bill* next;
+
+    Bill(int id, string title, string description, string proposer, int priority) {
+        this->id = id;
+        this->title = title;
+        this->description = description;
+        this->proposer = proposer;
+        this->status = "Pending";
+        this->priority = priority;
+        this->next = nullptr;
+    }
+};
+
+
+class PriorityQueue {
+private:
+    Bill* front;
+
+public:
+    PriorityQueue() { front = nullptr; }
+
+
+    void enqueue(Bill* bill) {
+        if (front == nullptr) {
+            front = bill;
+            bill->next = nullptr;  
+            return;
+        }
+
+
+        if (bill->priority > front->priority) {
+            bill->next = front;
+            front = bill;
+            return;
+        }
+
+
+        Bill* current = front;
+        Bill* prev = nullptr;
+        
+        while (current != nullptr && current->priority >= bill->priority) {
+            prev = current;
+            current = current->next;
+        }
+
+        prev->next = bill;
+        bill->next = current;
+    }
+
+    Bill* dequeue() {
+        if (front == nullptr) {
+            return nullptr;
+        }
+        Bill* temp = front;
+        front = front->next;
+        temp->next = nullptr;  
+        return temp;
+    }
+
+    bool isEmpty() {
+        return front == nullptr;
+    }
+
+    void display() {
+        Bill* temp = front;
+        while (temp != nullptr) {
+            cout << "ID: " << temp->id << ", Title: " << temp->title 
+                 << ", Priority: " << temp->priority << endl;
+            temp = temp->next;
+        }
+    }
+};
+
+
+class Stack {
+private:
+    struct Node {
+        int vote;
+        Node* next;
+        Node(int v) : vote(v), next(nullptr) {}
+    };
+    Node* top;
+
+public:
+    Stack() { top = nullptr; }
+
+    void push(int vote) {
+        Node* newNode = new Node(vote);
+        newNode->next = top;
+        top = newNode;
+    }
+
+    int pop() {
+        if (top == nullptr) {
+            return -1;
+        }
+        Node* temp = top;
+        top = top->next;
+        int vote = temp->vote;
+        delete temp;
+        return vote;
+    }
+
+    bool isEmpty() {
+        return top == nullptr;
+    }
+
+    int countYesVotes() {
+        int count = 0;
+        Node* temp = top;
+        while (temp != nullptr) {
+            if (temp->vote == 1) count++;
+            temp = temp->next;
+        }
+        return count;
+    }
+
+    int countTotalVotes() {
+        int count = 0;
+        Node* temp = top;
+        while (temp != nullptr) {
+            count++;
+            temp = temp->next;
+        }
+        return count;
+    }
+
+
+    ~Stack() {
+        while (top != nullptr) {
+            Node* temp = top;
+            top = top->next;
+            delete temp;
+        }
+    }
+};
+
+class ParliamentSystem {
+private:
+    PriorityQueue votingQueue;
+    Bill* allBills;
+    int billCount;
+
+public:
+    ParliamentSystem() {
+        allBills = nullptr;
+        billCount = 0;
+    }
+
+    void addBill(string title, string description, string proposer, int priority) {
+        Bill* newBill = new Bill(++billCount, title, description, proposer, priority);
+        
+
+        votingQueue.enqueue(newBill);
+
+
+        Bill* newBillForList = new Bill(billCount, title, description, proposer, priority);
+        if (allBills == nullptr) {
+            allBills = newBillForList;
+        } else {
+            Bill* temp = allBills;
+            while (temp->next != nullptr) {
+                temp = temp->next;
+            }
+            temp->next = newBillForList;
+        }
+
+        cout << "Bill added successfully.\n";
+    }
+
+    void voteOnBill() {
+        if (votingQueue.isEmpty()) {
+            cout << "No bills in the voting queue.\n";
+            return;
+        }
+
+        Bill* currentBill = votingQueue.dequeue();
+        cout << "\nVoting on Bill:\n";
+        cout << "ID: " << currentBill->id << "\nTitle: " << currentBill->title << endl;
+
+        Stack votes;
+        int members;
+        
+        do {
+            cout << "Enter number of members voting (minimum 1): ";
+            cin >> members;
+
+            if (cin.fail()) {
+                cin.clear();
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            }
+        } while (members < 1);
+
+        for (int i = 0; i < members; i++) {
+            int vote;
+            do {
+                cout << "Member " << (i + 1) << " vote (1 for Yes, 0 for No): ";
+                cin >> vote;
+
+                if (cin.fail()) {
+                    cin.clear();
+                    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                }
+            } while (vote != 0 && vote != 1);
+            
+            votes.push(vote);
+        }
+
+        int yesVotes = votes.countYesVotes();
+        int totalVotes = votes.countTotalVotes();
+
+        // Update status in both queue and all bills list
+        if (yesVotes > totalVotes / 2) {
+            // Update status in all bills list
+            Bill* temp = allBills;
+            while (temp != nullptr) {
+                if (temp->id == currentBill->id) {
+                    temp->status = "Passed";
+                    break;
+                }
+                temp = temp->next;
+            }
+            cout << "Bill passed with " << yesVotes << " out of " << totalVotes << " votes.\n";
+        } else {
+
+            Bill* temp = allBills;
+            while (temp != nullptr) {
+                if (temp->id == currentBill->id) {
+                    temp->status = "Rejected";
+                    break;
+                }
+                temp = temp->next;
+            }
+            cout << "Bill rejected with " << yesVotes << " out of " << totalVotes << " votes.\n";
+        }
+
+        delete currentBill;  
+    }
+
+    void displayBills() {
+        if (allBills == nullptr) {
+            cout << "No bills introduced yet.\n";
+            return;
+        }
+
+        cout << "\nAll Bills:\n";
+        Bill* temp = allBills;
+        while (temp != nullptr) {
+            cout << "ID: " << temp->id 
+                 << "\nTitle: " << temp->title 
+                 << "\nProposer: " << temp->proposer
+                 << "\nStatus: " << temp->status 
+                 << "\nPriority: " << temp->priority << "\n\n";
+            temp = temp->next;
+        }
+    }
+
+
+    ~ParliamentSystem() {
+        while (allBills != nullptr) {
+            Bill* temp = allBills;
+            allBills = allBills->next;
+            delete temp;
+        }
+    }
+};
+
+int main() {
+    ParliamentSystem system;
+    int choice;
+
+    do {
+        cout << "\nParliament Bill Tracker\n";
+        cout << "1. Add a Bill\n";
+        cout << "2. Vote on a Bill\n";
+        cout << "3. Display All Bills\n";
+        cout << "4. Exit\n";
+        cout << "Enter your choice: ";
+        
+
+        if (!(cin >> choice)) {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            choice = 0; 
+        }
+
+        switch (choice) {
+            case 1: {
+                string title, description, proposer;
+                int priority;
+                
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                
+                cout << "Enter title: ";
+                getline(cin, title);
+                
+                cout << "Enter description: ";
+                getline(cin, description);
+                
+                cout << "Enter proposer: ";
+                getline(cin, proposer);
+                
+                do {
+                    cout << "Enter priority (1 or higher, higher is more urgent): ";
+                    if (!(cin >> priority) || priority < 1) {
+                        cin.clear();
+                        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                        continue;
+                    }
+                    break;
+                } while (true);
+                
+                system.addBill(title, description, proposer, priority);
+                break;
+            }
+            case 2:
+                system.voteOnBill();
+                break;
+            case 3:
+                system.displayBills();
+                break;
+            case 4:
+                cout << "Exiting...\n";
+                break;
+            default:
+                cout << "Invalid choice. Please try again.\n";
+        }
+    } while (choice != 4);
+
+    return 0;
+}
