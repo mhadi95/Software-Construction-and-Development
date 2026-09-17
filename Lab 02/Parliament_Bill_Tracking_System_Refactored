@@ -1,0 +1,327 @@
+#include <iostream>
+#include <string>
+#include <limits>
+#include <vector>
+#include <memory>
+
+// ==========================================
+// 1. Bill Data & Status
+// ==========================================
+enum class BillStatus { Pending, Passed, Rejected };
+
+inline std::string billStatusToString(BillStatus status) {
+    switch (status) {
+        case BillStatus::Pending: return "Pending";
+        case BillStatus::Passed: return "Passed";
+        case BillStatus::Rejected: return "Rejected";
+        default: return "Unknown";
+    }
+}
+
+class Bill {
+private:
+    int id;
+    std::string title;
+    std::string description;
+    std::string proposer;
+    BillStatus status;
+    int priority;
+
+public:
+    Bill(int id, std::string title, std::string description, std::string proposer, int priority)
+        : id(id), title(title), description(description), proposer(proposer), 
+          status(BillStatus::Pending), priority(priority) {}
+
+    int getId() const { return id; }
+    std::string getTitle() const { return title; }
+    std::string getDescription() const { return description; }
+    std::string getProposer() const { return proposer; }
+    BillStatus getStatus() const { return status; }
+    int getPriority() const { return priority; }
+
+    void setStatus(BillStatus newStatus) { status = newStatus; }
+};
+
+// ==========================================
+// 2. BillRepository (Single Ownership)
+// ==========================================
+class BillRepository {
+private:
+    std::vector<std::unique_ptr<Bill>> bills;
+    int nextId = 1;
+
+public:
+    Bill* addBill(const std::string& title, const std::string& description, const std::string& proposer, int priority) {
+        bills.push_back(std::make_unique<Bill>(nextId++, title, description, proposer, priority));
+        return bills.back().get(); // Return raw, non-owning pointer for the queue
+    }
+
+    const std::vector<std::unique_ptr<Bill>>& getAllBills() const {
+        return bills;
+    }
+};
+
+// ==========================================
+// 3. BillPriorityQueue
+// ==========================================
+class BillPriorityQueue {
+private:
+    struct Node {
+        Bill* bill;
+        Node* next;
+        Node(Bill* b) : bill(b), next(nullptr) {}
+    };
+    Node* front;
+
+public:
+    BillPriorityQueue() : front(nullptr) {}
+
+    ~BillPriorityQueue() {
+        while (front != nullptr) {
+            Node* temp = front;
+            front = front->next;
+            delete temp;
+        }
+    }
+
+    void enqueue(Bill* bill) {
+        Node* newNode = new Node(bill);
+        if (front == nullptr || bill->getPriority() > front->bill->getPriority()) {
+            newNode->next = front;
+            front = newNode;
+            return;
+        }
+
+        Node* current = front;
+        while (current->next != nullptr && current->next->bill->getPriority() >= bill->getPriority()) {
+            current = current->next;
+        }
+        newNode->next = current->next;
+        current->next = newNode;
+    }
+
+    Bill* dequeue() {
+        if (front == nullptr) return nullptr;
+        Node* temp = front;
+        front = front->next;
+        Bill* dequeuedBill = temp->bill;
+        delete temp;
+        return dequeuedBill;
+    }
+
+    bool isEmpty() const { return front == nullptr; }
+};
+
+// ==========================================
+// 4. VoteTally (Formerly Stack)
+// ==========================================
+class VoteTally {
+private:
+    struct Node {
+        int vote;
+        Node* next;
+        Node(int v) : vote(v), next(nullptr) {}
+    };
+    Node* top;
+
+public:
+    VoteTally() : top(nullptr) {}
+
+    ~VoteTally() {
+        while (top != nullptr) {
+            Node* temp = top;
+            top = top->next;
+            delete temp;
+        }
+    }
+
+    void push(int vote) {
+        Node* newNode = new Node(vote);
+        newNode->next = top;
+        top = newNode;
+    }
+
+    int countYesVotes() const {
+        int count = 0;
+        Node* temp = top;
+        while (temp != nullptr) {
+            if (temp->vote == 1) count++;
+            temp = temp->next;
+        }
+        return count;
+    }
+
+    int countTotalVotes() const {
+        int count = 0;
+        Node* temp = top;
+        while (temp != nullptr) {
+            count++;
+            temp = temp->next;
+        }
+        return count;
+    }
+};
+
+// ==========================================
+// 5. VotingRules
+// ==========================================
+class VotingRules {
+public:
+    static bool didBillPass(int yesVotes, int totalVotes) {
+        if (totalVotes == 0) return false;
+        return yesVotes > (totalVotes / 2);
+    }
+};
+
+// ==========================================
+// 6. InputHelpers
+// ==========================================
+class InputHelpers {
+public:
+    static int readValidatedInt(const std::string& prompt, int minVal = -999999) {
+        int value;
+        while (true) {
+            std::cout << prompt;
+            if (std::cin >> value && value >= minVal) {
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                return value;
+            }
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Please enter a valid number (Minimum: " << minVal << ").\n";
+        }
+    }
+
+    static std::string readNonEmptyLine(const std::string& prompt) {
+        std::string value;
+        while (true) {
+            std::cout << prompt;
+            std::getline(std::cin, value);
+            if (!value.empty()) {
+                return value;
+            }
+            std::cout << "Input cannot be empty. Please try again.\n";
+        }
+    }
+};
+
+// ==========================================
+// 7. ParliamentSystem
+// ==========================================
+class ParliamentSystem {
+private:
+    BillRepository repository;
+    BillPriorityQueue votingQueue;
+
+public:
+    void addBill(const std::string& title, const std::string& desc, const std::string& proposer, int priority) {
+        Bill* newBill = repository.addBill(title, desc, proposer, priority);
+        votingQueue.enqueue(newBill);
+    }
+
+    bool hasBillsToVote() const {
+        return !votingQueue.isEmpty();
+    }
+
+    Bill* getNextBillToVote() {
+        return votingQueue.dequeue();
+    }
+
+    const BillRepository& getRepository() const {
+        return repository;
+    }
+};
+
+// ==========================================
+// 8. Main Application
+// ==========================================
+int main() {
+    ParliamentSystem system;
+    const int MIN_PRIORITY = 1;
+    const int MIN_VOTING_MEMBERS = 1;
+    int choice = 0;
+
+    do {
+        std::cout << "\n--- Parliament Bill Tracker ---\n";
+        std::cout << "1. Add a Bill\n";
+        std::cout << "2. Vote on a Bill\n";
+        std::cout << "3. Display All Bills\n";
+        std::cout << "4. Exit\n";
+        
+        choice = InputHelpers::readValidatedInt("Enter your choice: ");
+
+        switch (choice) {
+            case 1: {
+                std::string title = InputHelpers::readNonEmptyLine("Enter title: ");
+                std::string description = InputHelpers::readNonEmptyLine("Enter description: ");
+                std::string proposer = InputHelpers::readNonEmptyLine("Enter proposer: ");
+                int priority = InputHelpers::readValidatedInt("Enter priority (1 or higher, higher is more urgent): ", MIN_PRIORITY);
+                
+                system.addBill(title, description, proposer, priority);
+                std::cout << "Bill added successfully.\n";
+                break;
+            }
+            case 2: {
+                if (!system.hasBillsToVote()) {
+                    std::cout << "No bills in the voting queue.\n";
+                    break;
+                }
+
+                Bill* currentBill = system.getNextBillToVote();
+                std::cout << "\nVoting on Bill:\n";
+                std::cout << "ID: " << currentBill->getId() << "\nTitle: " << currentBill->getTitle() << "\n";
+
+                int members = InputHelpers::readValidatedInt("Enter number of members voting (minimum 1): ", MIN_VOTING_MEMBERS);
+                VoteTally votes;
+
+                for (int i = 0; i < members; i++) {
+                    int vote = -1;
+                    while (vote != 0 && vote != 1) {
+                        std::cout << "Member " << (i + 1) << " vote (1 for Yes, 0 for No): ";
+                        vote = InputHelpers::readValidatedInt("");
+                        if (vote != 0 && vote != 1) {
+                            std::cout << "Please enter exactly 1 or 0.\n";
+                        }
+                    }
+                    votes.push(vote);
+                }
+
+                int yesVotes = votes.countYesVotes();
+                int totalVotes = votes.countTotalVotes();
+
+                if (VotingRules::didBillPass(yesVotes, totalVotes)) {
+                    currentBill->setStatus(BillStatus::Passed);
+                    std::cout << "Bill passed with " << yesVotes << " out of " << totalVotes << " votes.\n";
+                } else {
+                    currentBill->setStatus(BillStatus::Rejected);
+                    std::cout << "Bill rejected with " << yesVotes << " out of " << totalVotes << " votes.\n";
+                }
+                break;
+            }
+            case 3: {
+                const auto& allBills = system.getRepository().getAllBills();
+                if (allBills.empty()) {
+                    std::cout << "No bills introduced yet.\n";
+                    break;
+                }
+
+                std::cout << "\n--- All Bills ---\n";
+                for (const auto& bill : allBills) {
+                    std::cout << "ID: " << bill->getId() 
+                              << "\nTitle: " << bill->getTitle() 
+                              << "\nProposer: " << bill->getProposer()
+                              << "\nStatus: " << billStatusToString(bill->getStatus()) 
+                              << "\nPriority: " << bill->getPriority() << "\n\n";
+                }
+                break;
+            }
+            case 4:
+                std::cout << "Exiting...\n";
+                break;
+            default:
+                std::cout << "Invalid choice. Please try again.\n";
+        }
+    } while (choice != 4);
+
+    return 0;
+}
